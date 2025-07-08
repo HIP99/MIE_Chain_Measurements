@@ -1,0 +1,40 @@
+import sys
+import os
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+
+from pathlib import Path
+import matplotlib.pyplot as plt
+
+from Impulse.Impulse_Response import Impulse_Response
+
+class Cable_Impulse(Impulse_Response):
+    """
+    The only purpose is to be an impulse response measurement for the cable setup.
+    """
+    def __init__(self, *args, **kwargs):
+
+        current_dir = Path(__file__).resolve()
+
+        parent_dir = current_dir.parents[2]
+
+        filepath = parent_dir / 'data' / 'Scope_Data' / f'FullChain_Cables'
+
+        super().__init__(filepath=filepath, tag='Cable')
+
+
+if __name__ == '__main__':
+
+    cbl_ir = Cable_Impulse()
+
+
+    print(cbl_ir.group_delay)
+    fig, ax = plt.subplots()
+    cbl_ir.plot_fft(ax=ax)
+    ax.set_title("Scope Impulse Response Cable Gain spectrum")
+    # plt.show()
+
+    # cbl_ir.plot_data()
+
+    plt.show()
