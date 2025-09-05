@@ -10,7 +10,7 @@ from pathlib import Path
 from scipy.signal import correlate
 from scipy.interpolate import UnivariateSpline
 from RF_Utils.Scope_Data import Scope_Data
-from MIE_Chain_Measurements.MIE_Pulse import MIE_Pulse
+from RF_Utils.Pulse import Pulse
 
 class Impulse_Response(Scope_Data):
     """
@@ -21,10 +21,12 @@ class Impulse_Response(Scope_Data):
     def __init__(self, filepath, tag, *args, **kwargs):
 
         super().__init__(filepath=filepath, tag=tag, *args, **kwargs)
-        self.pulse = MIE_Pulse(time = getattr(self, "time"), waveform=getattr(self, "C1W1").waveform, role='pulse', tag=tag)
+
+        self.pulse = Pulse(time = getattr(self, "time"), waveform=getattr(self, "C1W1").waveform, tag=tag+"_pulse")
+
         delattr(self, "C1W1")
 
-        self.response = MIE_Pulse(time = getattr(self, "time"), waveform=getattr(self, "C2W1").waveform, role='response', tag=tag)
+        self.response = Pulse(time = self.pulse.time, waveform=getattr(self, "C2W1").waveform, tag=tag+"_response")
 
         delattr(self, "C2W1")
 
@@ -63,16 +65,15 @@ class Impulse_Response(Scope_Data):
         _, idk  = self.mag_spectrum_db
         return self.lin_to_db(average_linear_gain)
 
-    
     @property
-    def fft(self):
-        overall_fft = self.response.fft/(self.pulse.fft + 1e-12)
-        return overall_fft
+    def frequency_response(self):
+        frequency_response = self.response.fft/(self.pulse.fft + 1e-12)
+        return frequency_response
 
     @property
     def mag_spectrum(self):
         N = len(self.response)
-        overall_fft = self.fft
+        overall_fft = self.frequency_response
         overall_mag = np.abs(overall_fft[:N//2 + 1])
         return self.response.xf, overall_mag
 
@@ -80,65 +81,99 @@ class Impulse_Response(Scope_Data):
     def mag_spectrum_db(self):
         _, overall_mag = self.mag_spectrum
         return self.response.xf, self.lin_to_db(overall_mag)
-    
+
+    @property
+    def impulse_response(self):
+        return Pulse(waveform=np.fft.ifft(self.frequency_response).real, time = self.pulse.time)
+        
     def find_pulse_peak(self):
         return self.pulse.pulse_peak
     
     def find_response_peak(self):
         return self.response.pulse_peak
 
-    def plot_pulse(self, ax: plt.Axes=None, label: str = None):
+    def plot_impulse_response(self, ax: plt.Axes=None, **kwargs):
         if ax is None:
             fig, ax = plt.subplots()
 
-        mask = (self.time <= 20*1e-9)
+        impulse_response = self.impulse_response
+        impulse_response.plot_waveform(ax=ax, scale=1e3, **kwargs)
+        ax.set_ylabel("Voltage (mV)")
+        ax.set_title("Impulse Time Domain")
 
-        self.pulse.plot_waveform(ax=ax, scale=1e3, mask=mask)
+    def plot_pulse(self, ax: plt.Axes=None, **kwargs):
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        # mask = (self.time <= 20*1e-9)
+
+        self.pulse.plot_waveform(ax=ax, scale=1e3, **kwargs)
         ax.set_ylabel("Voltage (mV)")
         ax.set_title("Pulse Time Domain")
 
-
-    def plot_response(self, ax: plt.Axes=None, label: str = None):
+    def plot_response(self, ax: plt.Axes=None, **kwargs):
         if ax is None:
             fig, ax = plt.subplots()
 
-        mask = slice(None)#(self.time >= 35*1e6) & (self.time <= 60*1e-9)
+        # mask = (self.time >= 35*1e6) & (self.time <= 60*1e-9)
 
-        self.response.plot_waveform(ax=ax, scale=1e3, mask=mask)
+        self.response.plot_waveform(ax=ax, scale=1e3, **kwargs)
         ax.set_ylabel("Voltage (mV)")
         ax.set_title("Response Time Domain")
 
-    def plot_data(self, ax: plt.Axes=None):
+    def plot_data(self, ax: plt.Axes=None, **kwargs):
         if ax is None:
             fig, ax = plt.subplots()
 
-        self.pulse.plot_waveform(ax=ax, scale=1e3)
-        self.response.plot_waveform(ax=ax, scale=1e3)
+        self.pulse.plot_waveform(ax=ax, scale=1e3, **kwargs)
+        self.response.plot_waveform(ax=ax, scale=1e3, **kwargs)
         ax.set_ylabel("Voltage (mV)")
         ax.set_title("Pulse and Impulse response")
         ax.legend()
 
-
-    def plot_pulse_fft(self, ax: plt.Axes=None, f_start=0, f_stop=2000, log = True):
+    def plot_pulse_fft(self, ax: plt.Axes=None, f_start=300, f_stop=1200, log = True, **kwargs):
         if ax is None:
             fig, ax = plt.subplots()
 
-        xf =  self.pulse.xf
-
-        mask = (xf >= f_start*1e6) & (xf <= f_stop*1e6)
-
-        self.pulse.plot_fft(ax=ax, mask=mask, log = True)
+        self.pulse.plot_fft(ax=ax, f_start=f_start, f_stop=f_stop, log = True, **kwargs)
 
         ax.set_xlabel("Frequency (Hz)")
         ax.set_ylabel("Magnitude" + (" (dB)" if log else ""))
         ax.set_title("FFT Magnitude Spectrum")
         # ax.grid(True)
 
-    def plot_fft(self, ax: plt.Axes=None, f_start=0, f_stop=2000, log = True, add_ons = False):
+    def plot_reponse_fft(self, ax: plt.Axes=None, f_start=300, f_stop=1200, log = True, **kwargs):
         if ax is None:
             fig, ax = plt.subplots()
 
-        # xf, fft_mag  = self.fft
+        self.response.plot_fft(ax=ax, f_start=f_start, f_stop=f_stop, log = True, **kwargs)
+
+        ax.set_xlabel("Frequency (Hz)")
+        ax.set_ylabel("Magnitude" + (" (dB)" if log else ""))
+        ax.set_title("FFT Magnitude Spectrum")
+        # ax.grid(True)
+
+
+    def plot_fft2(self, ax: plt.Axes=None, f_start=0, f_stop=2000, log = True, add_ons = False, **kwargs):
+        if ax is None:
+            fig, ax = plt.subplots()
+
+
+        """I know this is a round about way but it makes it easier to add extras"""
+        self.impulse_response.plot_fft(ax=ax, f_start=f_start, f_stop=f_stop, log = True, scale = len(self)/2,**kwargs)
+        if add_ons:
+            self.pulse.plot_fft(ax=ax, alpha = 0.7, f_start=f_start, f_stop=f_stop, log = True, **kwargs)
+            self.response.plot_fft(ax=ax, alpha = 0.7, f_start=f_start, f_stop=f_stop, log = True, **kwargs)
+            ax.legend()
+
+        ax.set_xlabel("Frequency (Hz)")
+        ax.set_ylabel("Magnitude" + (" (dB)" if log else ""))
+        ax.set_title("FFT Magnitude Spectrum")
+        # ax.grid(True)
+
+    def plot_fft(self, ax: plt.Axes=None, f_start=0, f_stop=2000, log = True, add_ons = False, **kwargs):
+        if ax is None:
+            fig, ax = plt.subplots()
 
         if log:
             xf, fft_mag  = self.mag_spectrum_db
@@ -149,8 +184,9 @@ class Impulse_Response(Scope_Data):
 
         ax.plot(xf[mask]/1e6, fft_mag[mask], label=self.tag)
         if add_ons:
-            self.pulse.plot_fft(ax=ax, alpha = 0.7, mask=mask, log = True)
-            self.response.plot_fft(ax=ax, alpha = 0.7, mask=mask, log = True)
+            self.pulse.plot_fft(ax=ax, alpha = 0.7, f_start=f_start, f_stop=f_stop, log = True, **kwargs)
+            self.response.plot_fft(ax=ax, alpha = 0.7, f_start=f_start, f_stop=f_stop, log = True, **kwargs)
+            ax.legend()
 
         ax.set_xlabel("Frequency (Hz)")
         ax.set_ylabel("Magnitude" + (" (dB)" if log else ""))
@@ -192,15 +228,16 @@ if __name__=="__main__":
 
     fig, ax = plt.subplots()
 
-    filepath = parent_dir / 'data' / 'Scope_Data' / f'FullChain_30dBAtn'
-    data = Impulse_Response(filepath=filepath, tag = "30 dB")
+    filepath = parent_dir / 'data' / 'Scope_Data' / f'FullChain_017'
+    data = Impulse_Response(filepath=filepath, tag = "Channel 017")
 
-    print(data.group_delay)
-    print(data.gain)
-    # data.plot_fft(ax=ax, log=True)
+    # data.plot_response(ax=ax)
+    # data.plot_impulse_response(ax=ax)
+
+    data.plot_fft(ax=ax, log=True, add_ons=True)
     # data.plot_fft_smoothed(ax=ax, log=True, window_size=5)
 
-    data.plot_pulse_fft(ax=ax, log=True)
+    # data.plot_pulse_fft(ax=ax, log=True)
 
     # filepath = current_dir / 'data' / f'FullChain_20dBatn'
     # data = Impulse_Response(filepath=filepath, tag = "20 dB")

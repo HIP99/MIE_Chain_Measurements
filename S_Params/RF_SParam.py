@@ -12,31 +12,36 @@ from scipy.signal import find_peaks
 from scipy.interpolate import UnivariateSpline
 from RF_Utils.VNA_Data import VNA_Data
 from S_Params.Setup_SParam import Setup_SParam
-from MIE_Channel import MIE_Channel
+# from MIE_Channel import MIE_Channel
+from RF_Utils.MIE_Channel import MIE_Channel
 
 import warnings
 warnings.filterwarnings("ignore", category=np.ComplexWarning)
 
-class RF_SParam(VNA_Data, MIE_Channel):
+class RF_SParam(VNA_Data):
     """
     VNA S21 measurement for the AMPA and MIE setup.
     This automatically adjusts the data given a setup of cables and attenuators
     The VNA data has a lot of ripples and there's a lot of subsidiary methods relating to the ripples
     """
-    def __init__(self, channel, setup : Setup_SParam = None, *args, **kwargs):
+    def __init__(self, info:MIE_Channel|dict = None, setup : Setup_SParam = None, *args, **kwargs):
+
+        self.info:MIE_Channel
+
+        if isinstance(info, MIE_Channel):
+            self.info = info
+        elif isinstance(info, dict):
+            self.info = MIE_Channel(**info)
+        else:
+            raise TypeError("Infomation input is not in the correct form.")
 
         current_dir = Path(__file__).resolve()
 
         parent_dir = current_dir.parents[2]
 
-        filepath = parent_dir / 'data' / 'VNA_Data' / f'fullchain_{channel}.s2p'
+        filepath = parent_dir / 'data' / 'VNA_Data' / f'fullchain_{self.info.rf_channel:03d}.s2p'
 
-        super().__init__(filepath = filepath, *args, **kwargs)
-
-        self.info = {"Channel": channel}
-        self.get_info(channel)
-
-        self.tag = f"VNA Channel : {channel}"
+        super().__init__(filepath = filepath, tag = f"VNA Channel : {self.info.rf_channel}", *args, **kwargs)
 
         if setup:
             self.setup = setup
@@ -231,15 +236,10 @@ class RF_SParam(VNA_Data, MIE_Channel):
         ax.grid(True)
 
 if __name__ == '__main__':
-    rf_chain = RF_SParam("017")
-
-    ##This finds the ripples with longer wavelength
-    long_settings = {"prominence" : 0.0005, "distance" : 55, "width" : 1}
-    ##This finds the ripples with shorter wavelength
-    short_settings = {"prominence" : 0.001, "distance" : 15}
+    rf_chain = RF_SParam(info = {'rf_channel':"017"})
 
     fig, ax = plt.subplots()
 
-    rf_chain.plot_s21_filtered(ax = ax)
+    rf_chain.plot_impulse_response(ax=ax)
     plt.legend()
     plt.show()

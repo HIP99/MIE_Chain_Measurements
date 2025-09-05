@@ -9,47 +9,39 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 import pandas as pd
 
-from SURF_Measurements.SURF_Channel import SURF_Channel
+from SURF_Measurements.surf_data import SURFData
+from SURF_Measurements.surf_channel import SURFChannel
+from SURF_Measurements.surf_channel_info import SURFChannelInfo
 from RF_Utils.Pulse import Pulse
 import random
+from typing import Any
 
-class SURF_Channel_MIE(SURF_Channel):
+class SURFChannelMIE(SURFChannel):
     """
-    Surf data is extracted for everything single surf channel (224 total)
-    SURF channel only needs the name of the surf channel and it will extract that surfs data from the whole
+    SURF MIE chain data has a specifc file naming system. Finds data from SURF name input
     """
-    def __init__(self, surf:str = None, surf_index:int = None, channel_index:int = None, run:int=None, *args, **kwargs):
+    def __init__(self, info:SURFChannelInfo|dict = None, run:int=None, *args, **kwargs):
+
+        self.get_info(info, **kwargs)
 
         current_dir = Path(__file__).resolve()
-
         parent_dir = current_dir.parents[2]
+        filepath = parent_dir / 'data' / 'SURF_Data' / f'SURF{self.info.surf_channel_name}' / f'SURF{self.info.surf_channel_name}_{run}.pkl'
 
-        filepath = parent_dir / 'data' / 'SURF_Data' / f'SURF{surf}' / f'SURF{surf}_{run}.pkl'
-
-        super().__init__(filepath = filepath, surf=surf, surf_index = None, channel_index = None, run=run, *args, **kwargs)
-
-    def format_data(self):
-        all_data = super(SURF_Channel, self).format_data()
-
-        self.get_surf_index()
-
-        self.data = Pulse(waveform=all_data[self.surf_index][self.channel_index], sample_frequency=3e9, tag = f'SURF : {self.surf}_{self.run}')
-
-
-    def extract_pulse_window(self, pre=20, post=120):
-        self.data.pulse_window(pre=pre, post=post)
-
-
+        surf_data = SURFData(filepath=filepath)
+        
+        super().__init__(data = surf_data.format_data()[self.info.surf_index][self.info.rfsoc_channel], info=self.info)
+        
+        del surf_data
 
 if __name__ == '__main__':
-    surf = "IH8"
     run=0
 
-    idk = SURF_Channel_MIE( surf=surf, run=run)
+    surf = SURFChannelMIE(info={"surf_channel_name":"AV6"}, run=run)
 
     fig, ax = plt.subplots()
 
-    idk.plot_data(ax=ax)
+    surf.plot_samples(ax=ax)
 
     plt.legend()
     plt.show()
